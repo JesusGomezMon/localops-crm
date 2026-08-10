@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: lint → typecheck → test → audit → build
+    runs-on: ubuntu-latest
+
+    env:
+      # Throwaway values so the suite and the build have something to read. None of
+      # these is a credential: the database is a scratch SQLite file and the secret is
+      # only ever used to sign tokens nobody keeps.
+      DATABASE_URL: "file:./ci.db"
+      AUTH_SECRET: "ci-only-not-a-real-secret"
+      AUTH_URL: "http://localhost:3000"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # `postinstall` runs `prisma generate`, so the client exists for every step below.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Includes the two security tests: cross-tenant isolation, and public booking
+      # slot validation + rate limiting. The suite provisions its own SQLite database.
+      - name: Test
+        run: pnpm test
+
+      # `high` rather than the default, so that a low-severity advisory in a dev-only
+      # dependency does not permanently red the pipeline and train people to ignore it.
+      # Raise the bar here when the dependency tree is under active maintenance.
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high
+
+      - name: Build
+        run: pnpm build

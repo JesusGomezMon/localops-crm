@@ -1,0 +1,224 @@
+// Kasterz — single-business schema.
+//
+// This was multi-tenant. Kasterz is the only business, so the `Tenant` model and the
+// `tenantId` column on every table were removed: they scoped queries to a boundary
+// that no longer has two sides.
+//
+// BRANCH SCOPING IS A DIFFERENT AXIS AND IS UNTOUCHED. `Branch` still owns its own
+// calendar, opening hours and VIP tier, and `branchId` is still required on every
+// appointment. Huayacán and Puerto Cancún remain fully separated.
+//
+// Auth tables are also gone. Sign-in no longer verifies anything — see auth.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Staff user. Signs in with a username and password — no email is sent, ever.
+model User {
+  id String @id @default(cuid())
+
+  /// Sign-in identifier. Short and human ("admin"), not an address: nothing in this
+  /// app emails anyone, so an address would be a field nobody uses.
+  username String @unique
+
+  /// scrypt hash in `scheme$salt$hash` form — see lib/password.ts. Nullable so a user
+  /// can exist before a password is set; `authorize()` refuses to sign in without one.
+  passwordHash String?
+
+  name      String?
+  email     String?
+  role      String   @default("staff") // "owner" | "staff"
+  createdAt DateTime @default(now())
+}
+
+/// A physical location. Branches are the ONLY scoping axis left, and every rule that
+/// depended on them still applies: each keeps its own calendar, and a VIP-only branch
+/// refuses Regular-tier work.
+model Branch {
+  id   String @id @default(cuid())
+  name String
+
+  /// Stable identifier for deep links: /book?sucursal=Huayacan
+  slug String?
+
+  address String?
+  phone   String?
+  active  Boolean @default(true)
+
+  /// Opening hours, as JSON: { "<dayOfWeek 0-6>": [openMinutes, closeMinutes] }.
+  /// A day absent from the object means closed that day. Default "{}" = closed
+  /// always, which fails safe: a misconfigured branch offers no slots rather than
+  /// accepting bookings nobody will honour.
+  openingHours String @default("{}")
+
+  /// True when the whole branch operates as VIP only.
+  vipOnly Boolean @default(false)
+
+  /// JSON array of amenity labels shown on the public page (sauna, cold tub, bar…).
+  amenities String?
+
+  createdAt DateTime @default(now())
+
+  appointments Appointment[]
+
+  @@index([slug])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  appointments Appointment[]
+  invoices     Invoice[]
+  memberships  CustomerMembership[]
+}
+
+model Service {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  durationMin Int     @default(60)
+  priceCents  Int     @default(0)
+  active      Boolean @default(true)
+
+  /// Groups the public menu the way the business already presents it
+  /// (Barbería, Paquetes, Extras, Spa…).
+  category String @default("General")
+
+  /// Service tier, and the whole basis of BRANCH filtering:
+  ///   "basico"    — Regular tier. Hidden at VIP-only branches.
+  ///   "vip"       — VIP tier. Available everywhere.
+  ///   "universal" — Neither tier applies (extras, spa). Always available.
+  tier String @default("universal")
+
+  /// What kind of line item this is:
+  ///   "service" / "package" — the primary choice, exactly one per booking
+  ///   "extra"               — multi-select, additive to the total
+  ///   "spa"                 — bookable on its own like a service
+  kind String @default("service")
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  appointments Appointment[]
+
+  @@index([kind, tier])
+}
+
+model Appointment {
+  id        String   @id @default(cuid())
+  startsAt  DateTime
+  endsAt    DateTime
+  status    String   @default("pending") // pending | confirmed | cancelled | completed
+  source    String   @default("staff") // staff | public | kiosk | walkin
+  notes     String?
+  createdAt DateTime @default(now())
+
+  /// JSON array of Service ids chosen as add-ons.
+  extraIds String @default("[]")
+
+  /// Price agreed at booking time: primary service + extras. Stored rather than
+  /// recomputed, so a later price change never rewrites what a customer was quoted.
+  totalCents Int @default(0)
+
+  /// Required: an appointment always happens at a specific branch.
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  invoices Invoice[]
+
+  @@index([startsAt])
+  @@index([branchId, startsAt])
+}
+
+/// Invoice never stores card data. `externalRef` and `checkoutUrl` are opaque handles
+/// returned by whatever PaymentProvider is plugged into lib/invoicing.ts.
+model Invoice {
+  id          String    @id @default(cuid())
+  amountCents Int
+  currency    String    @default("MXN")
+  status      String    @default("draft") // draft | sent | paid | void
+  externalRef String?
+  checkoutUrl String?
+  issuedAt    DateTime?
+  createdAt   DateTime  @default(now())
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+}
+
+/// A recurring subscription tier the business sells (Gold, Diamante, Platinum, Black).
+/// Catalogue only — it does not charge anyone. See README.
+model Membership {
+  id           String  @id @default(cuid())
+  name         String
+  priceCents   Int
+  savingsCents Int?
+  /// JSON array of plan variants, e.g. ["Signature 2/mes","Frequency 4/mes"].
+  plans        String  @default("[]")
+  /// JSON array of benefit lines, shown verbatim.
+  benefits     String  @default("[]")
+  highlight    Boolean @default(false)
+  sortOrder    Int     @default(0)
+  active       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  subscribers CustomerMembership[]
+}
+
+/// A customer's relationship with a membership tier. Still not billing: it records
+/// that someone asked, and that staff later activated it.
+model CustomerMembership {
+  id String @id @default(cuid())
+
+  /// "solicitada" | "activa" | "cancelada"
+  status String @default("solicitada")
+
+  requestedAt DateTime  @default(now())
+  startedAt   DateTime?
+  cancelledAt DateTime?
+
+  /// Basket total that triggered the upsell.
+  quotedTotalCents Int @default(0)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  membershipId String
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+  @@index([requestedAt])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String
+  model       String
+  recordId    String?
+  actorUserId String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}

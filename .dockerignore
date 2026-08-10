@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.github
+tests
+coverage
+*.db
+*.db-journal
+prisma/*.db
+.env
+.env.local
+README.md
+Dockerfile
+docker-compose.yml

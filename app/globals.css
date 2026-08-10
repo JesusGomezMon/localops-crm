@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens lifted from the live kasterz.com stylesheet, not approximated.
+ * Values were read out of the running site's :root computed styles.
+ *
+ * The look is a dark premium club: pure black ground, warm off-white type, one
+ * saturated gold for anything actionable, and slightly-lifted charcoal surfaces
+ * separated by hairline borders rather than shadows.
+ */
+@theme {
+  /* Core palette — verbatim from the production site */
+  --color-background: #000000;
+  --color-foreground: #f4efe6;
+  --color-surface: #141417;
+  --color-surface-2: #1c1c20;
+  --color-line: #2a2a2e;
+  --color-gold: #ffd200;
+  --color-gold-soft: #ffdd4d;
+  --color-muted: #a9a59c;
+  --color-danger: #b3303f;
+
+  /* Membership tier accents */
+  --color-tier-gold: #c9a24b;
+  --color-tier-diamante: #4fd1e8;
+  --color-tier-platinum: #d7dbe0;
+
+  /* Orbitron for display, Montserrat for body — the site's actual pairing.
+     Both are wired through next/font in app/layout.tsx, which self-hosts them. */
+  --font-display: var(--font-orbitron), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 18px;
+  --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html {
+  color-scheme: dark;
+  background-color: var(--color-background);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Display headings: Orbitron, uppercase, wide tracking, regular weight. */
+@utility display {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  font-weight: 400;
+}
+
+/* Small uppercase label used above each step. */
+@utility eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* The site's card: charcoal fill, hairline rim, 18px radius. */
+@utility card-surface {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+/* Metallic tier gradients, sampled from the production membership cards. */
+@utility tier-grad-gold {
+  background-image: linear-gradient(135deg, #8f6a24 0%, #e3bd6a 52%, #a97e2e 100%);
+}
+@utility tier-grad-diamante {
+  background-image: linear-gradient(135deg, #55808f 0%, #cfe6ee 52%, #7ba3b3 100%);
+}
+@utility tier-grad-platinum {
+  background-image: linear-gradient(135deg, #7d848d 0%, #f2f5f7 52%, #9aa2ab 100%);
+}
+@utility tier-grad-black {
+  background-image: linear-gradient(135deg, #a87c00 0%, #ffe066 52%, #d9a900 100%);
+}
+
+/* Applies a tier gradient to the text itself, as the site does for prices. */
+@utility tier-text {
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+/* Kiosk mode: fingers, not cursors. Any tablet-sized touch screen gets larger
+   hit targets without a second component tree — one flow, two contexts. */
+@media (pointer: coarse) and (min-width: 768px) {
+  .touch-target {
+    min-height: 4rem;
+  }
+}

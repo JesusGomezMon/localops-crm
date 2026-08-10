@@ -1,0 +1,49 @@
+# Local stack: just the app and its SQLite volume.
+#
+# The Mailhog service that used to live here is gone. It existed to catch magic-link
+# emails; sign-in is username and password now, and nothing in this app sends mail.
+#
+#   docker compose up --build
+#   app → http://localhost:3000
+#   Panel → /login with admin / admin123 (override with ADMIN_PASSWORD)
+
+services:
+  # One-shot: applies migrations and seeds the catalogue, then exits. Runs from the
+  # `builder` stage because that is where the Prisma CLI lives.
+  migrate:
+    build:
+      context: .
+      target: builder
+    command: sh -c "pnpm prisma migrate deploy && pnpm db:seed"
+    environment:
+      DATABASE_URL: "file:/data/kasterz.db"
+      # Seeds the staff password. Change it here and re-run to rotate.
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin123}"
+    volumes:
+      - kasterz-data:/data
+
+  app:
+    build:
+      context: .
+      target: runner
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "file:/data/kasterz.db"
+      # Dev-only. Generate a real one with `npx auth secret` before deploying.
+      AUTH_SECRET: "${AUTH_SECRET:-dev-only-secret-change-me}"
+      AUTH_URL: "http://localhost:3000"
+      AUTH_TRUST_HOST: "true"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin123}"
+      BOOKING_RATE_LIMIT: "5"
+      BOOKING_RATE_WINDOW_MS: "60000"
+      # Test/sandbox key only, supplied from the host environment. Never committed.
+      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
+    volumes:
+      - kasterz-data:/data
+
+volumes:
+  kasterz-data:
