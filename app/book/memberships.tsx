@@ -49,7 +49,7 @@ export function Memberships({ memberships }: { memberships: PublicMembership[] }
       };
 
       if (body.checkoutUrl) {
-        window.location.href = body.checkoutUrl;
+        window.location.assign(body.checkoutUrl);
         return;
       }
 

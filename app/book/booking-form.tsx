@@ -189,7 +189,7 @@ export function BookingForm({
 
       // Stripe hosts the payment page; leaving the site is the point.
       if (body.checkoutUrl) {
-        window.location.href = body.checkoutUrl;
+        window.location.assign(body.checkoutUrl);
         return;
       }
 
@@ -276,7 +276,7 @@ export function BookingForm({
       };
 
       if (body.checkoutUrl) {
-        window.location.href = body.checkoutUrl;
+        window.location.assign(body.checkoutUrl);
         return;
       }
 
